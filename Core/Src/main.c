@@ -62,6 +62,7 @@ volatile uint16_t myData;
 uint16_t processedData[WAV_WRITE_SAMPLE_COUNT];
 
 volatile int8_t half_i2s, full_i2s = 0; //TODO: check
+volatile uint8_t button_flag, start_stop_recording;
 
 /* USER CODE END PV */
 
@@ -72,7 +73,7 @@ static void MX_DMA_Init(void);
 static void MX_USART2_UART_Init(void);
 static void MX_I2S2_Init(void);
 static void MX_CRC_Init(void);
-static void MX_SPI5_Init(void); //SD_Card
+static void MX_SPI5_Init(void);
 /* USER CODE BEGIN PFP */
 void myprintf(const char *fmt, ...);
 /* USER CODE END PFP */
@@ -135,17 +136,33 @@ int main(void)
   sd_demo();
   /* USER CODE END 2 */
 
+  /* USER CODE BEGIN 3 */
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
   while (1)
   {
-	  printf("Hello World \n");
-	  HAL_GPIO_TogglePin(LD2_GPIO_Port, LD2_Pin);
-	  HAL_Delay(1000);
-    /* USER CODE END WHILE */
-
-    /* USER CODE BEGIN 3 */
+//	  printf("Hello World \n");
+//	  HAL_GPIO_TogglePin(LD2_GPIO_Port, LD2_Pin);
+//	  HAL_Delay(1000);
+	  if(button_flag)
+	  {
+		  HAL_GPIO_TogglePin(LD2_GPIO_Port, LD2_Pin);
+		  if(start_stop_recording) {
+			  start_stop_recording = 0;
+			  //stop_recording();
+			  printf("stop recording \n");
+			  myprintf("Stop recording \n");
+		  }
+		  else {
+			  start_stop_recording = 1;
+			  //start_recording(I2S_AUDIOFREQ_48K);
+			  printf("start recording \n");
+			  myprintf("Start recording \n");
+		  }
+		  button_flag = 0;
+	  }
   }
+  /* USER CODE END WHILE */
   /* USER CODE END 3 */
 }
 
@@ -367,7 +384,7 @@ static void MX_GPIO_Init(void)
 
   /*Configure GPIO pin : B1_Pin */
   GPIO_InitStruct.Pin = B1_Pin;
-  GPIO_InitStruct.Mode = GPIO_MODE_IT_FALLING;
+  GPIO_InitStruct.Mode = GPIO_MODE_IT_RISING;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   HAL_GPIO_Init(B1_GPIO_Port, &GPIO_InitStruct);
 
@@ -384,6 +401,10 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
   HAL_GPIO_Init(SD_CS_GPIO_Port, &GPIO_InitStruct);
+
+  /* EXTI interrupt init*/
+  HAL_NVIC_SetPriority(EXTI15_10_IRQn, 0, 0);
+  HAL_NVIC_EnableIRQ(EXTI15_10_IRQn);
 
 /* USER CODE BEGIN MX_GPIO_Init_2 */
 /* USER CODE END MX_GPIO_Init_2 */
@@ -408,6 +429,12 @@ void HAL_I2S_RxCpltCallback(I2S_HandleTypeDef *hi2s) {
 
 void HAL_I2SRxHalfCpltCallback(I2S_HandleTypeDef *hi2s) {
 	half_i2s = 1;
+}
+
+void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin) {
+	if(GPIO_Pin == B1_Pin) {
+		button_flag = 1;
+	}
 }
 /* USER CODE END 4 */
 
