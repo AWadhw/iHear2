@@ -55,11 +55,11 @@ SPI_HandleTypeDef hspi5;
 UART_HandleTypeDef huart2;
 
 /* USER CODE BEGIN PV */
-uint16_t dataIn_PDM[WAV_WRITE_SAMPLE_COUNT];
+uint16_t dataIn_PDM[WAV_WRITE_SAMPLE_COUNT]; //2048 samples
 volatile uint16_t sample_i2s;
 
-volatile uint16_t myData;
-uint16_t processedData[WAV_WRITE_SAMPLE_COUNT];
+volatile uint16_t myData; //debug variable for console
+uint16_t processedData[WAV_WRITE_SAMPLE_COUNT]; //out from pdm2pcm
 
 volatile int8_t half_i2s, full_i2s = 0; //TODO: check
 volatile uint8_t button_flag, start_stop_recording;
@@ -128,12 +128,13 @@ int main(void)
   MX_SPI5_Init();
   MX_FATFS_Init();
   /* USER CODE BEGIN 2 */
-  HAL_I2S_Receive_DMA(&hi2s2, &dataIn_PDM[0], 64); //size in bytes so we divide by 2
+  HAL_I2S_DMAStop(&hi2s2); //size in bytes so we divide by 2
+  HAL_Delay(1000);
   /*BELOW ADDED FOR SD_CARD*/
   sd_card_init();
-  PDM_Filter(&dataIn_PDM[0], &processedData[0], &PDM1_filter_handler);
+  //PDM_Filter(&dataIn_PDM[0], &processedData[0], &PDM1_filter_handler);
   //dump_audio_content((uint8_t*)processedData, WAV_WRITE_SAMPLE_COUNT);
-  sd_demo();
+  //sd_demo();
   /* USER CODE END 2 */
 
   /* USER CODE BEGIN 3 */
@@ -147,19 +148,34 @@ int main(void)
 	  if(button_flag)
 	  {
 		  HAL_GPIO_TogglePin(LD2_GPIO_Port, LD2_Pin);
-		  if(start_stop_recording) {
+		  if(start_stop_recording) { //1
+			  HAL_I2S_DMAStop(&hi2s2);
 			  start_stop_recording = 0;
-			  //stop_recording();
+			  half_i2s = 0;
+			  full_i2s = 0;
+			  stop_recording();
 			  printf("stop recording \n");
 			  myprintf("Stop recording \n");
 		  }
 		  else {
 			  start_stop_recording = 1;
-			  //start_recording(I2S_AUDIOFREQ_48K);
+			  start_recording(I2S_AUDIOFREQ_48K);
 			  printf("start recording \n");
 			  myprintf("Start recording \n");
+			  HAL_I2S_Receive_DMA(&hi2s2, (uint16_t *)dataIn_PDM, sizeof(dataIn_PDM)/2);
 		  }
 		  button_flag = 0;
+	  }
+	  PDM_Filter(&dataIn_PDM[0], &processedData[0], &PDM1_filter_handler);
+	  if(start_stop_recording == 1 && half_i2s == 1) {
+		  myData = processedData[0];
+		  dump_audio_content(((uint8_t*)processedData), WAV_WRITE_SAMPLE_COUNT);
+		  half_i2s = 0;
+	  }
+	  if(start_stop_recording == 1 && full_i2s == 1) {
+		  myData = processedData[0];
+		  dump_audio_content(((uint8_t*)processedData) + WAV_WRITE_SAMPLE_COUNT, WAV_WRITE_SAMPLE_COUNT);
+		  full_i2s = 0;
 	  }
   }
   /* USER CODE END WHILE */
@@ -421,9 +437,9 @@ int _write(int file, char *ptr, int len) {
 
 void HAL_I2S_RxCpltCallback(I2S_HandleTypeDef *hi2s) {
 	//sample_i2s = dataIn_PDM[0];
-	PDM_Filter(&dataIn_PDM[0], &processedData[0], &PDM1_filter_handler);
-	//MX_PDM2PCM_Process(&data_i2s[0], &processedData[0]);
-	myData = processedData[0];
+//	PDM_Filter(&dataIn_PDM[0], &processedData[0], &PDM1_filter_handler);
+//	//MX_PDM2PCM_Process(&data_i2s[0], &processedData[0]);
+//	myData = processedData[0];
 	full_i2s = 1;
 }
 

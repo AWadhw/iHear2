@@ -1,3 +1,5 @@
-../Core/Src/audio_sd.c:7:6:sd_card_init	8	static
-../Core/Src/audio_sd.c:22:6:sd_demo	72	static
-../Core/Src/audio_sd.c:104:6:dump_audio_content	24	static
+../Core/Src/audio_sd.c:26:6:sd_card_init	8	static
+../Core/Src/audio_sd.c:41:6:start_recording	24	static
+../Core/Src/audio_sd.c:81:6:dump_audio_content	24	static
+../Core/Src/audio_sd.c:110:6:stop_recording	8	static
+../Core/Src/audio_sd.c:120:6:sd_demo	72	static
