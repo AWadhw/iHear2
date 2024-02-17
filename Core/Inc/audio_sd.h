@@ -8,7 +8,7 @@
 
 #include "fatfs.h"
 
-#define WAV_WRITE_SAMPLE_COUNT 2048
+#define WAV_WRITE_SAMPLE_COUNT 64
 
 extern void myprintf(const char *fmt, ...);
 

@@ -4,6 +4,7 @@ static FRESULT fres;
 static FATFS FatFs;
 static FIL fil; 		//File handle
 
+static uint32_t wav_file_size;
 static uint8_t first_access = 0;
 // 0 - 3   -> "RIFF"                     							{0x52, 0x49, 0x46, 0x46}
 // 4 - 7   -> size of the file in bytes  							{data_section size + 36}
@@ -20,7 +21,7 @@ static uint8_t first_access = 0;
 // 40 - 43 -> size of the data section								{data section size}
 //	data
 static uint8_t wav_file_header[44]={0x52, 0x49, 0x46, 0x46, 0xa4, 0xa9, 0x03, 0x00, 0x57 ,0x41, 0x56, 0x45, 0x66, 0x6d,
-		0x74, 0x20, 0x10, 0x00, 0x00, 0x00, 0x01, 0x00, 0x02, 0x00, 0x80, 0x7d, 0x00, 0x00, 0x00, 0xf4, 0x01, 0x00,
+		0x74, 0x20, 0x10, 0x00, 0x00, 0x00, 0x01, 0x00, 0x02, 0x00, 0x80, 0xbb, 0x80, 0x00, 0x00, 0xee, 0x02, 0x00,
 		0x04, 0x00, 0x10, 0x00, 0x64, 0x61, 0x74, 0x61, 0x80, 0xa9, 0x03, 0x00};
 
 void sd_card_init()
@@ -29,18 +30,20 @@ void sd_card_init()
 	fres = f_mount(&FatFs, "", 1);
 	if(fres != 0)
 	{
-		printf("error in mounting an sd card: %d \n", fres);
-		while(1);
+		myprintf("error in mounting an sd card: %d \n", fres);
+		while (fres != FR_OK) {
+			fres = f_mount(&FatFs, "", 1);
+		}
 	}
 	else
 	{
-		printf("succeded in mounting an sd card \n");
+		myprintf("succeded in mounting an sd card \n");
 	}
 }
 
 void start_recording(uint32_t frequency)
 {
-	static char file_name[] = "w_000.lav";
+	static char file_name[] = "w_000.wav";
 	static uint8_t file_counter = 1; //TODO: check if 10
 	int file_number_digits = file_counter;
 	uint32_t byte_rate = frequency * 2 * 2;
@@ -68,14 +71,12 @@ void start_recording(uint32_t frequency)
 	if(fres != 0)
 	{
 		myprintf("error in creating a file: %d \n", fres);
-		while(1);
 	}
 	else
 	{
 		myprintf("succeeded in opening a file \n");
 	}
-	//wav_file_size = 0;
-
+	wav_file_size = 0;
 }
 
 void dump_audio_content(uint8_t *data, uint16_t data_size){
@@ -83,12 +84,12 @@ void dump_audio_content(uint8_t *data, uint16_t data_size){
 
 	uint32_t temp_number;
 	printf("w\n");
-//	if(first_access == 0) {
-//		for(int i = 0; i < 44; i++){
-//			*(data + i) = wav_file_header[i];
-//		}
-//		first_access = 1;
-//	}
+	if(first_access == 0) {
+		for(int i = 0; i < 44; i++){
+			*(data + i) = wav_file_header[i];
+		}
+		first_access = 1;
+	}
 	 //Now let's try to open file "audio.txt"
 	//fres = f_open(&fil, "audio.raw", FA_WRITE | FA_OPEN_ALWAYS | FA_CREATE_ALWAYS);
 //	if(fres == FR_OK) {
@@ -97,24 +98,45 @@ void dump_audio_content(uint8_t *data, uint16_t data_size){
 //	myprintf("f_open error In dump_audio :( (%i)\r\n", fres);
 //	}
 	fres = f_write(&fil,(void *)data, data_size,(UINT*)&temp_number);
-
-	if(fres == FR_OK) {
-	myprintf("Wrote %i bytes to '.lav'!\r\n", temp_number);
-	} else {
-	myprintf("f_write error (%i)\r\n");
+//	for (int i = 0; i < 20; i++) {
+//		myprintf("My data is: %x", (*data));
+//	}
+	if(fres != FR_OK) {
+	//myprintf("Wrote %i bytes to '.lav'!\r\n", temp_number);
+	myprintf("f_write error (%i)\r\n", fres);
 	}
+
+	wav_file_size += data_size;
 
 	//f_close(&fil);
 }
 
 void stop_recording() {
-//	if(fres != 0)
-//	{
-//		printf("error in updating the first sector: %d \n", fres);
+	uint16_t temp_number;
+		// updating data size sector
+	wav_file_size -= 8;
+	wav_file_header[4] = (uint8_t)wav_file_size;
+	wav_file_header[5] = (uint8_t)(wav_file_size >> 8);
+	wav_file_header[6] = (uint8_t)(wav_file_size >> 16);
+	wav_file_header[7] = (uint8_t)(wav_file_size >> 24);
+	wav_file_size -= 36;
+	wav_file_header[40] = (uint8_t)wav_file_size;
+	wav_file_header[41] = (uint8_t)(wav_file_size >> 8);
+	wav_file_header[42] = (uint8_t)(wav_file_size >> 16);
+	wav_file_header[43] = (uint8_t)(wav_file_size >> 24);
+
+	// moving to the beginning of the file to update the file format
+	f_lseek(&fil, 0);
+	f_write(&fil,(void *)wav_file_header, sizeof(wav_file_header),(UINT*)&temp_number);
+	if(fres != FR_OK)
+	{
+		printf("error in updating the first sector: %d \n", fres);
 //		while(1);
-//	}
-	myprintf("Closing file now....");
+	}
+
 	f_close(&fil);
+	first_access = 0;
+	myprintf("Closing file now....");
 }
 
 void sd_demo(void) {

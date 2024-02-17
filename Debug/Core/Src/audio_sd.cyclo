@@ -1,5 +1,5 @@
-../Core/Src/audio_sd.c:26:6:sd_card_init	2
-../Core/Src/audio_sd.c:41:6:start_recording	2
-../Core/Src/audio_sd.c:81:6:dump_audio_content	2
-../Core/Src/audio_sd.c:110:6:stop_recording	1
-../Core/Src/audio_sd.c:120:6:sd_demo	6
+../Core/Src/audio_sd.c:27:6:sd_card_init	3
+../Core/Src/audio_sd.c:44:6:start_recording	2
+../Core/Src/audio_sd.c:82:6:dump_audio_content	4
+../Core/Src/audio_sd.c:114:6:stop_recording	2
+../Core/Src/audio_sd.c:142:6:sd_demo	6
