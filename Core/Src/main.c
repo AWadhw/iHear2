@@ -41,7 +41,8 @@
 
 /* Private macro -------------------------------------------------------------*/
 /* USER CODE BEGIN PM */
-
+#define NUM_AUDIO_IN_CHANNELS 2 //TODO: Change when switching to SAI
+#define CHANNEL_DEMUX_MASK                    	0x55U
 /* USER CODE END PM */
 
 /* Private variables ---------------------------------------------------------*/
@@ -55,16 +56,40 @@ SPI_HandleTypeDef hspi5;
 UART_HandleTypeDef huart2;
 
 /* USER CODE BEGIN PV */
-uint16_t dataIn_PDM[WAV_WRITE_SAMPLE_COUNT]; //2048 samples
-volatile uint16_t sample_i2s;
+int32_t CONVERT_AUDIO_IN_PDMToPCM(uint16_t *PDMBuf, uint16_t *PCMBuf);
+//uint16_t PDM_Buffer[((((AUDIO_IN_CHANNELS * AUDIO_IN_SAMPLING_FREQUENCY) / 1000) * MAX_DECIMATION_FACTOR) / 16)* N_MS ];
+uint16_t dataIn_PDM[NUM_AUDIO_IN_CHANNELS * 48* 8]; //TODO: change 16 to 48 and maybe 8 to 4
+uint16_t processedData[NUM_AUDIO_IN_CHANNELS * 48]; //out from pdm2pcm
+static uint16_t I2S_InternalBuffer[768]; //holder before data is interleaved
 
+volatile uint16_t sample_i2s;
 volatile uint16_t myData; //debug variable for console
-uint16_t processedData[WAV_WRITE_SAMPLE_COUNT]; //out from pdm2pcm
+
 
 volatile int8_t half_i2s, full_i2s; //TODO: check
 volatile uint8_t button_flag, start_stop_recording;
 
 uint32_t pcmErr = 0;
+
+//BlackMagic
+static uint8_t Channel_Demux[128] = {
+  0x00, 0x01, 0x00, 0x01, 0x02, 0x03, 0x02, 0x03,
+  0x00, 0x01, 0x00, 0x01, 0x02, 0x03, 0x02, 0x03,
+  0x04, 0x05, 0x04, 0x05, 0x06, 0x07, 0x06, 0x07,
+  0x04, 0x05, 0x04, 0x05, 0x06, 0x07, 0x06, 0x07,
+  0x00, 0x01, 0x00, 0x01, 0x02, 0x03, 0x02, 0x03,
+  0x00, 0x01, 0x00, 0x01, 0x02, 0x03, 0x02, 0x03,
+  0x04, 0x05, 0x04, 0x05, 0x06, 0x07, 0x06, 0x07,
+  0x04, 0x05, 0x04, 0x05, 0x06, 0x07, 0x06, 0x07,
+  0x08, 0x09, 0x08, 0x09, 0x0a, 0x0b, 0x0a, 0x0b,
+  0x08, 0x09, 0x08, 0x09, 0x0a, 0x0b, 0x0a, 0x0b,
+  0x0c, 0x0d, 0x0c, 0x0d, 0x0e, 0x0f, 0x0e, 0x0f,
+  0x0c, 0x0d, 0x0c, 0x0d, 0x0e, 0x0f, 0x0e, 0x0f,
+  0x08, 0x09, 0x08, 0x09, 0x0a, 0x0b, 0x0a, 0x0b,
+  0x08, 0x09, 0x08, 0x09, 0x0a, 0x0b, 0x0a, 0x0b,
+  0x0c, 0x0d, 0x0c, 0x0d, 0x0e, 0x0f, 0x0e, 0x0f,
+  0x0c, 0x0d, 0x0c, 0x0d, 0x0e, 0x0f, 0x0e, 0x0f
+};
 
 /* USER CODE END PV */
 
@@ -130,7 +155,7 @@ int main(void)
   MX_SPI5_Init();
   MX_FATFS_Init();
   /* USER CODE BEGIN 2 */
-  HAL_I2S_DMAStop(&hi2s2); //size in bytes so we divide by 2
+  //HAL_I2S_DMAStop(&hi2s2); //size in bytes so we divide by 2 TODO:check
   //HAL_I2S_Receive_DMA(&hi2s2, (uint16_t *)dataIn_PDM, sizeof(dataIn_PDM)/2);
   HAL_Delay(1000);
   /*BELOW ADDED FOR SD_CARD*/
@@ -153,7 +178,9 @@ int main(void)
 	  {
 		  HAL_GPIO_TogglePin(LD2_GPIO_Port, LD2_Pin);
 		  if(start_stop_recording) { //1
-			  HAL_I2S_DMAStop(&hi2s2);
+			  if (HAL_I2S_DMAStop(&hi2s2) != HAL_OK) {
+				 myprintf("Big error in recording");
+			  }
 			  start_stop_recording = 0;
 			  stop_recording();
 			  half_i2s = 0;
@@ -170,7 +197,10 @@ int main(void)
 			  uint32_t myArrSize = sizeof(dataIn_PDM);
 			  myprintf("The size of my array is: %i", myArrSize);
 			  //HAL_I2S_Receive_DMA(&hi2s2, (uint16_t *)dataIn_PDM, sizeof(dataIn_PDM)/2);
-			  HAL_I2S_Receive_DMA(&hi2s2, &dataIn_PDM[0], sizeof(dataIn_PDM)/2);
+			  //CHECK: AudioInCtx[Instance].Size = (PDM_Clock_Freq/8U) * 2U * N_MS_PER_INTERRUPT;
+			  if (HAL_I2S_Receive_DMA(&hi2s2, &I2S_InternalBuffer[0], (uint16_t)768/2U) != HAL_OK) {
+				  myprintf("Big error in DMA");
+			  }
 		  }
 		  button_flag = 0;
 	  }
@@ -178,14 +208,19 @@ int main(void)
 	  if(start_stop_recording == 1 && half_i2s == 1) {
 //		  PDM_Filter(&dataIn_PDM[0], &processedData[0], &PDM1_filter_handler);
 //		  myData = processedData[0];
-		  dump_audio_content((uint8_t*)processedData, WAV_WRITE_SAMPLE_COUNT);
 		  half_i2s = 0;
+		  CONVERT_AUDIO_IN_PDMToPCM((uint16_t *)dataIn_PDM, processedData);
+		  dump_audio_content((uint8_t*)processedData, WAV_WRITE_SAMPLE_COUNT);
+		  //myprintf("audio dumped!");
+
 	  }
 	  if(start_stop_recording == 1 && full_i2s == 1) {
 //		  PDM_Filter(&dataIn_PDM[0], &processedData[0], &PDM1_filter_handler);
 //		  myData = processedData[0];
-		  dump_audio_content((uint8_t*)processedData + WAV_WRITE_SAMPLE_COUNT, WAV_WRITE_SAMPLE_COUNT);
 		  full_i2s = 0;
+		  CONVERT_AUDIO_IN_PDMToPCM((uint16_t *)dataIn_PDM, processedData);
+		  dump_audio_content((uint8_t*)processedData + WAV_WRITE_SAMPLE_COUNT, WAV_WRITE_SAMPLE_COUNT);
+
 	  }
   }
   /* USER CODE END WHILE */
@@ -445,25 +480,61 @@ int _write(int file, char *ptr, int len) {
 }
 
 void HAL_I2S_RxCpltCallback(I2S_HandleTypeDef *hi2s) {
-	//sample_i2s = dataIn_PDM[0];
-	pcmErr = PDM_Filter(&dataIn_PDM[0], &processedData[0], &PDM1_filter_handler);
-	if (pcmErr != 0) {
-		myprintf("Error is: %i", pcmErr);
-	}
-
-	//MX_PDM2PCM_Process(&data_i2s[0], &processedData[0]);
-	myData = processedData[0];
-	full_i2s = 1;
+//	//sample_i2s = dataIn_PDM[0];
+//	pcmErr = PDM_Filter(&dataIn_PDM[0], &processedData[0], &PDM1_filter_handler);
+//	if (pcmErr != 0) {
+//		myprintf("Error is: %i", pcmErr);
+//	}
+//
+//	//MX_PDM2PCM_Process(&data_i2s[0], &processedData[0]);
+//	myData = processedData[0];
+//	full_i2s = 1;
+	//myprintf("Reached Callback");
+	uint32_t index;
+	uint16_t * DataTempI2S = &(I2S_InternalBuffer[768/2U]);
+  uint8_t a,b;
+  for(index=0; index<(768/2U); index++)
+  {
+	  a = ((uint8_t *)(DataTempI2S))[(index*2U)];
+	 b = ((uint8_t *)(DataTempI2S))[(index*2U)+1U];
+	 ((uint8_t *)(dataIn_PDM))[(index*2U)] = Channel_Demux[a & CHANNEL_DEMUX_MASK] | (Channel_Demux[b & CHANNEL_DEMUX_MASK] << 4);;
+	 ((uint8_t *)(dataIn_PDM))[(index*2U)+1U] = Channel_Demux[(a>>1) & CHANNEL_DEMUX_MASK] | (Channel_Demux[(b>>1) & CHANNEL_DEMUX_MASK] << 4);
+  }
+  full_i2s = 1;
+  myData = processedData[0];
 }
 
-void HAL_I2SRxHalfCpltCallback(I2S_HandleTypeDef *hi2s) {
+void HAL_I2S_RxHalfCpltCallback(I2S_HandleTypeDef *hi2s) {
 	//sample_i2s = dataIn_PDM[0];
 //	pcmErr = PDM_Filter(&dataIn_PDM[0], &processedData[0], &PDM1_filter_handler);
 //	if (pcmErr != 0) {
 //			myprintf("Error is: %i", pcmErr);
 //	}
-	myData = processedData[0];
-	half_i2s = 1;
+//	myData = processedData[0];
+//	half_i2s = 1;
+	uint32_t index;
+	uint16_t * DataTempI2S = I2S_InternalBuffer;
+  uint8_t a,b;
+  for(index=0; index<384; index++)
+  {
+	a = ((uint8_t *)(DataTempI2S))[(index*2U)];
+	b = ((uint8_t *)(DataTempI2S))[(index*2U)+1U];
+	((uint8_t *)(dataIn_PDM))[(index*2U)] = Channel_Demux[a & CHANNEL_DEMUX_MASK] |
+	  (Channel_Demux[b & CHANNEL_DEMUX_MASK] << 4);;
+	  ((uint8_t *)(dataIn_PDM))[(index*2U)+1U] = Channel_Demux[(a>>1) & CHANNEL_DEMUX_MASK] |
+		(Channel_Demux[(b>>1) & CHANNEL_DEMUX_MASK] << 4);
+  }
+  myData = processedData[0];
+  half_i2s = 1;
+}
+
+//TODO: might need different filter handlers
+int32_t CONVERT_AUDIO_IN_PDMToPCM(uint16_t *PDMBuf, uint16_t *PCMBuf) {
+	uint32_t index;
+	for(index = 0; index < NUM_AUDIO_IN_CHANNELS; index++) {
+		(void)PDM_Filter(&((uint8_t*)(PDMBuf))[index], (uint16_t*)&(PCMBuf[index]), &PDM1_filter_handler);
+	}
+	return 1;
 }
 
 void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin) {

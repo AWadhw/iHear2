@@ -8,7 +8,11 @@
 
 #include "fatfs.h"
 
-#define WAV_WRITE_SAMPLE_COUNT 64
+#define WAV_WRITE_SAMPLE_COUNT 96
+
+#ifndef N_MS_PER_INTERRUPT
+#define N_MS_PER_INTERRUPT               (1U)
+#endif
 
 extern void myprintf(const char *fmt, ...);
 
