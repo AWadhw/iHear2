@@ -53,6 +53,8 @@ DMA_HandleTypeDef hdma_spi2_rx;
 
 SPI_HandleTypeDef hspi5;
 
+TIM_HandleTypeDef htim3;
+
 UART_HandleTypeDef huart2;
 
 /* USER CODE BEGIN PV */
@@ -101,6 +103,7 @@ static void MX_USART2_UART_Init(void);
 static void MX_I2S2_Init(void);
 static void MX_CRC_Init(void);
 static void MX_SPI5_Init(void);
+static void MX_TIM3_Init(void);
 /* USER CODE BEGIN PFP */
 void myprintf(const char *fmt, ...);
 /* USER CODE END PFP */
@@ -154,6 +157,7 @@ int main(void)
   MX_PDM2PCM_Init();
   MX_SPI5_Init();
   MX_FATFS_Init();
+  MX_TIM3_Init();
   /* USER CODE BEGIN 2 */
   //HAL_I2S_DMAStop(&hi2s2); //size in bytes so we divide by 2 TODO:check
   //HAL_I2S_Receive_DMA(&hi2s2, (uint16_t *)dataIn_PDM, sizeof(dataIn_PDM)/2);
@@ -164,8 +168,6 @@ int main(void)
   //dump_audio_content((uint8_t*)processedData, WAV_WRITE_SAMPLE_COUNT);
   //sd_demo();
   /* USER CODE END 2 */
-  start_stop_recording = 0;
-  button_flag = 0;
 
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
@@ -223,8 +225,11 @@ int main(void)
 
 	  }
   }
-  /* USER CODE END WHILE */
-} //main
+    /* USER CODE END WHILE */
+
+    /* USER CODE BEGIN 3 */
+  /* USER CODE END 3 */
+}
 
 /**
   * @brief System Clock Configuration
@@ -367,6 +372,68 @@ static void MX_SPI5_Init(void)
   /* USER CODE BEGIN SPI5_Init 2 */
 
   /* USER CODE END SPI5_Init 2 */
+
+}
+
+/**
+  * @brief TIM3 Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_TIM3_Init(void)
+{
+
+  /* USER CODE BEGIN TIM3_Init 0 */
+
+  /* USER CODE END TIM3_Init 0 */
+
+  TIM_SlaveConfigTypeDef sSlaveConfig = {0};
+  TIM_MasterConfigTypeDef sMasterConfig = {0};
+  TIM_OC_InitTypeDef sConfigOC = {0};
+
+  /* USER CODE BEGIN TIM3_Init 1 */
+
+  /* USER CODE END TIM3_Init 1 */
+  htim3.Instance = TIM3;
+  htim3.Init.Prescaler = 0;
+  htim3.Init.CounterMode = TIM_COUNTERMODE_UP;
+  htim3.Init.Period = 1;
+  htim3.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
+  htim3.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
+  if (HAL_TIM_Base_Init(&htim3) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  if (HAL_TIM_PWM_Init(&htim3) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  sSlaveConfig.SlaveMode = TIM_SLAVEMODE_EXTERNAL1;
+  sSlaveConfig.InputTrigger = TIM_TS_TI1FP1;
+  sSlaveConfig.TriggerPolarity = TIM_TRIGGERPOLARITY_RISING;
+  sSlaveConfig.TriggerFilter = 0;
+  if (HAL_TIM_SlaveConfigSynchro(&htim3, &sSlaveConfig) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  sMasterConfig.MasterOutputTrigger = TIM_TRGO_RESET;
+  sMasterConfig.MasterSlaveMode = TIM_MASTERSLAVEMODE_DISABLE;
+  if (HAL_TIMEx_MasterConfigSynchronization(&htim3, &sMasterConfig) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  sConfigOC.OCMode = TIM_OCMODE_PWM1;
+  sConfigOC.Pulse = 1;
+  sConfigOC.OCPolarity = TIM_OCPOLARITY_HIGH;
+  sConfigOC.OCFastMode = TIM_OCFAST_DISABLE;
+  if (HAL_TIM_PWM_ConfigChannel(&htim3, &sConfigOC, TIM_CHANNEL_2) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN TIM3_Init 2 */
+
+  /* USER CODE END TIM3_Init 2 */
+  HAL_TIM_MspPostInit(&htim3);
 
 }
 
