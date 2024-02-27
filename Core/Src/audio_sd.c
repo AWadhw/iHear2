@@ -24,11 +24,95 @@ static uint8_t wav_file_header[44]={0x52, 0x49, 0x46, 0x46, 0xa4, 0xa9, 0x03, 0x
 		0x74, 0x20, 0x10, 0x00, 0x00, 0x00, 0x01, 0x00, 0x02, 0x00, 0x80, 0xbb, 0x80, 0x00, 0x00, 0xee, 0x02, 0x00,
 		0x04, 0x00, 0x10, 0x00, 0x64, 0x61, 0x74, 0x61, 0x80, 0xa9, 0x03, 0x00};
 
+uint16_t   BitPerSample=16;
+uint16_t   NbrChannels=2;
+uint32_t   ByteRate=48000*(16/8); //check bluecoin
+
+uint32_t   SampleRate=48000;
+uint16_t   BlockAlign= 2 * (16/8);
+
+void set_wav_header() {
+	  /* Write chunkID, must be 'RIFF'  ------------------------------------------*/
+	wav_file_header[0] = 'R';
+	wav_file_header[1] = 'I';
+	wav_file_header[2] = 'F';
+	wav_file_header[3] = 'F';
+
+	  /* Write the file length ----------------------------------------------------*/
+	  /* The sampling time: this value will be be written back at the end of the
+	     recording opearation.  Example: 661500 Btyes = 0x000A17FC, byte[7]=0x00, byte[4]=0xFC */
+	wav_file_header[4] = 0x00;
+	wav_file_header[5] = 0x4C;
+	wav_file_header[6] = 0x1D;
+	wav_file_header[7] = 0x00;
+
+	  /* Write the file format, must be 'WAVE' -----------------------------------*/
+	wav_file_header[8]  = 'W';
+	wav_file_header[9]  = 'A';
+	wav_file_header[10] = 'V';
+	wav_file_header[11] = 'E';
+
+	  /* Write the format chunk, must be'fmt ' -----------------------------------*/
+	wav_file_header[12]  = 'f';
+	wav_file_header[13]  = 'm';
+	wav_file_header[14]  = 't';
+	wav_file_header[15]  = ' ';
+
+	  /* Write the length of the 'fmt' data, must be 0x10 ------------------------*/
+	wav_file_header[16]  = 0x10;
+	wav_file_header[17]  = 0x00;
+	wav_file_header[18]  = 0x00;
+	wav_file_header[19]  = 0x00;
+
+	  /* Write the audio format, must be 0x01 (PCM) ------------------------------*/
+	wav_file_header[20]  = 0x01;
+	wav_file_header[21]  = 0x00;
+
+	  /* Write the number of channels, ie. 0x01 (Mono) ---------------------------*/
+	wav_file_header[22]  = NbrChannels;
+	wav_file_header[23]  = 0x00;
+
+	  /* Write the Sample Rate in Hz ---------------------------------------------*/
+	  /* Write Little Endian ie. 8000 = 0x00001F40 => byte[24]=0x40, byte[27]=0x00*/
+	wav_file_header[24]  = (uint8_t)((SampleRate & 0xFF));
+	wav_file_header[25]  = (uint8_t)((SampleRate >> 8) & 0xFF);
+	wav_file_header[26]  = (uint8_t)((SampleRate >> 16) & 0xFF);
+	wav_file_header[27]  = (uint8_t)((SampleRate >> 24) & 0xFF);
+
+	  /* Write the Byte Rate -----------------------------------------------------*/
+	wav_file_header[28]  = (uint8_t)(( ByteRate & 0xFF));
+	wav_file_header[29]  = (uint8_t)(( ByteRate >> 8) & 0xFF);
+	wav_file_header[30]  = (uint8_t)(( ByteRate >> 16) & 0xFF);
+	wav_file_header[31]  = (uint8_t)(( ByteRate >> 24) & 0xFF);
+
+	  /* Write the block alignment -----------------------------------------------*/
+	wav_file_header[32]  = BlockAlign;
+	wav_file_header[33]  = 0x00;
+
+	  /* Write the number of bits per sample -------------------------------------*/
+	wav_file_header[34]  = BitPerSample;
+	wav_file_header[35]  = 0x00;
+
+	  /* Write the Data chunk, must be 'data' ------------------------------------*/
+	wav_file_header[36]  = 'd';
+	wav_file_header[37]  = 'a';
+	wav_file_header[38]  = 't';
+	wav_file_header[39]  = 'a';
+
+	  /* Write the number of sample data -----------------------------------------*/
+	  /* This variable will be written back at the end of the recording operation */
+	wav_file_header[40]  = 0x00;
+	wav_file_header[41]  = 0x4C;
+	wav_file_header[42]  = 0x1D;
+	wav_file_header[43]  = 0x00;
+
+}
+
 void sd_card_init()
 {
 	//	mounting an sd card
 	fres = f_mount(&FatFs, "", 1);
-	if(fres != 0)
+	if(fres != FR_OK)
 	{
 		myprintf("error in mounting an sd card: %d \n", fres);
 		while (fres != FR_OK) {
@@ -38,6 +122,7 @@ void sd_card_init()
 	else
 	{
 		myprintf("succeded in mounting an sd card \n");
+		set_wav_header();
 	}
 }
 
@@ -46,15 +131,15 @@ void start_recording(uint32_t frequency)
 	static char file_name[] = "w_000.wav";
 	static uint8_t file_counter = 1; //TODO: check if 10
 	int file_number_digits = file_counter;
-	uint32_t byte_rate = frequency * 2 * 2;
-	wav_file_header[24] = (uint8_t)frequency;
-	wav_file_header[25] = (uint8_t)(frequency >> 8);
-	wav_file_header[26] = (uint8_t)(frequency >> 16);
-	wav_file_header[27] = (uint8_t)(frequency >> 24);
-	wav_file_header[28] = (uint8_t)byte_rate;
-	wav_file_header[29] = (uint8_t)(byte_rate >> 8);
-	wav_file_header[30] = (uint8_t)(byte_rate >> 16);
-	wav_file_header[31] = (uint8_t)(byte_rate >> 24);
+//	uint32_t byte_rate = frequency * 2 * 2;
+//	wav_file_header[24] = (uint8_t)frequency;
+//	wav_file_header[25] = (uint8_t)(frequency >> 8);
+//	wav_file_header[26] = (uint8_t)(frequency >> 16);
+//	wav_file_header[27] = (uint8_t)(frequency >> 24);
+//	wav_file_header[28] = (uint8_t)byte_rate;
+//	wav_file_header[29] = (uint8_t)(byte_rate >> 8);
+//	wav_file_header[30] = (uint8_t)(byte_rate >> 16);
+//	wav_file_header[31] = (uint8_t)(byte_rate >> 24);
 
 	// defining a wave file name
 	file_name[4] = file_number_digits%10 + 48; //48 is digit 0
@@ -103,7 +188,7 @@ void dump_audio_content(uint8_t *data, uint16_t data_size){
 //	}
 	if(fres != FR_OK) {
 	//myprintf("Wrote %i bytes to '.lav'!\r\n", temp_number);
-	myprintf("f_write error (%i)\r\n", fres);
+	myprintf("f_write error while dumping (%i)\r\n", fres);
 	}
 
 	wav_file_size += data_size;
@@ -114,16 +199,29 @@ void dump_audio_content(uint8_t *data, uint16_t data_size){
 void stop_recording() {
 	uint16_t temp_number;
 		// updating data size sector
-	wav_file_size -= 8;
-	wav_file_header[4] = (uint8_t)wav_file_size;
+//	wav_file_size -= 8;
+//	wav_file_header[4] = (uint8_t)wav_file_size;
+//	wav_file_header[5] = (uint8_t)(wav_file_size >> 8);
+//	wav_file_header[6] = (uint8_t)(wav_file_size >> 16);
+//	wav_file_header[7] = (uint8_t)(wav_file_size >> 24);
+//	wav_file_size -= 36;
+//	wav_file_header[40] = (uint8_t)wav_file_size;
+//	wav_file_header[41] = (uint8_t)(wav_file_size >> 8);
+//	wav_file_header[42] = (uint8_t)(wav_file_size >> 16);
+//	wav_file_header[43] = (uint8_t)(wav_file_size >> 24);
+	wav_file_header[4] = (uint8_t)(wav_file_size);
 	wav_file_header[5] = (uint8_t)(wav_file_size >> 8);
 	wav_file_header[6] = (uint8_t)(wav_file_size >> 16);
 	wav_file_header[7] = (uint8_t)(wav_file_size >> 24);
-	wav_file_size -= 36;
-	wav_file_header[40] = (uint8_t)wav_file_size;
-	wav_file_header[41] = (uint8_t)(wav_file_size >> 8);
-	wav_file_header[42] = (uint8_t)(wav_file_size >> 16);
-	wav_file_header[43] = (uint8_t)(wav_file_size >> 24);
+	  /* Write the number of sample data -----------------------------------------*/
+	  /* This variable will be written back at the end of the recording operation */
+	wav_file_size -=44;
+	  wav_file_header[40] = (uint8_t)(wav_file_size);
+	  wav_file_header[41] = (uint8_t)(wav_file_size >> 8);
+	  wav_file_header[42] = (uint8_t)(wav_file_size >> 16);
+	  wav_file_header[43] = (uint8_t)(wav_file_size >> 24);
+	  /* Return 0 if all operations are OK */
+	  //return 0;
 
 	// moving to the beginning of the file to update the file format
 	f_lseek(&fil, 0);
